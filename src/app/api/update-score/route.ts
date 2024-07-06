@@ -1,0 +1,79 @@
+import { PrismaClient } from "@prisma/client";
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+
+const prisma = new PrismaClient();
+
+const bodySchema = z.object({
+  gameId: z.number(),
+  username: z.string(),
+  score: z.number(),
+});
+
+export const POST = async (req: NextRequest) => {
+  let body: typeof bodySchema._type;
+
+  try {
+    const { data, error, success } = bodySchema.safeParse(await req.json());
+    if (!success) {
+      return NextResponse.json(
+        { error: "Invalid body", issues: error.issues },
+        { status: 409 }
+      );
+    }
+
+    body = data;
+  } catch (error) {
+    return NextResponse.json({ error: "Invalid body" }, { status: 409 });
+  }
+
+  const game = await prisma.games.findFirst({
+    where: {
+      id: body.gameId,
+    },
+  });
+
+  if (!game) {
+    return NextResponse.json({ error: "Game not found" }, { status: 404 });
+  }
+
+  if (game.endTime.getTime() + 1000 * 10 < new Date().getTime()) {
+    return NextResponse.json({ error: "Game has ended" }, { status: 409 });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { username: body.username },
+  });
+
+  if (!user) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
+
+  // check if user is already in the game
+  const gameUser = await prisma.gameMembership.findFirst({
+    where: {
+      gameId: body.gameId,
+      username: body.username,
+    },
+  });
+
+  if (!gameUser) {
+    return NextResponse.json({ error: "User not in game" }, { status: 409 });
+  }
+
+  await prisma.gameMembership.update({
+    where: {
+      gameId_username: {
+        gameId: body.gameId,
+        username: body.username,
+      },
+    },
+    data: {
+      points: Math.max(gameUser.points, body.score),
+    },
+  });
+
+  await prisma.$disconnect();
+
+  return NextResponse.json({ success: true });
+};
