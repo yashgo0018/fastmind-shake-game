@@ -12,3 +12,31 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+model User {
+  username  String @id
+  publicKey String @unique
+
+  games GameMembership[]
+}
+
+model Games {
+  id        Int      @id @default(autoincrement())
+  startTime DateTime
+  endTime   DateTime
+
+  users GameMembership[]
+}
+
+model GameMembership {
+  gameId    Int
+  username  String
+  points    Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  game Games @relation(fields: [gameId], references: [id])
+  user User  @relation(fields: [username], references: [username])
+
+  @@id([gameId, username])
+}
